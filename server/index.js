@@ -24,9 +24,9 @@ app.get('/', (req, res) => {
 
 const port = process.env.PORT || 3000;
 
-app.listen(port, (err) => {
+app.listen(port, "192.168.0.21", (err) => {
     if (err) throw err;
-    console.log(`Server has running on: http://localhost:${port}`);
+    console.log(`Server has running on: http://192.168.0.21:${port}`);
 });
 
 mongoose.connect(process.env.LOCAL_URI).then(() => {

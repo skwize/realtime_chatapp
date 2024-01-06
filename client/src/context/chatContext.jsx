@@ -1,5 +1,6 @@
 import { createContext, useCallback, useEffect, useState } from "react";
 import { baseUrl, getRequest, postRequest } from "../utils/services";
+import { io } from "socket.io-client";
 
 
 export const ChatContex = createContext();
@@ -10,12 +11,81 @@ export const ChatContexProvider = ({children, user}) => {
     const [isUserChatsError, setIsUserChatsError] = useState(null);
     const [potentialChats, setPotentialChats] = useState([]);
     const [currentChat, setCurrentChat] = useState(null);
-    const [messages, setMessages] = useState(null)
-    const [isMessagesLoading, setIsMessagesLoading] = useState(false)
-    const [isMessagesError, setIsMessagesError] = useState(null)
+    const [messages, setMessages] = useState(null);
+    const [isMessagesLoading, setIsMessagesLoading] = useState(false);
+    const [isMessagesError, setIsMessagesError] = useState(null);
     const [sendTextMessageError, setSendTextMessageError] = useState(null);
     const [newMessage, setNewTextMessage] = useState(null);
+    const [socket, setSocket] = useState(null);
+    const [onlineUsers, setOnlineUsers] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [allUsers, setAllUsers] = useState([]);
 
+
+    console.log("notify", notifications)
+
+    useEffect(()=>{
+        const newSocket = io("http://192.168.0.21:3001");
+        setSocket(newSocket);
+
+        return () => {
+            newSocket.disconnect();
+        }
+    }, [user])
+
+    useEffect(()=>{
+        if(socket === null) return;
+        socket.emit("addNewUser", user?._id);
+        socket.on("getOnlineUsers", (res)=>{
+            setOnlineUsers(res);
+        })
+
+        return () => {
+            socket.off("getOnlineUsers")
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [socket])
+
+    //send message
+    useEffect(()=>{
+        if(socket === null) return;
+
+        const recipientId = currentChat?.members?.find((id) => id !== user?._id)
+
+        socket.emit("sendMessage", {...newMessage, recipientId});
+       
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [newMessage])
+
+
+    //receive message & notification
+    useEffect(()=>{
+        if(socket === null) return;
+
+        socket.on("getMessage", res => {
+            if (currentChat?._id !== res.chatId) return;
+
+            setMessages((prev)=> [...prev, res])
+        });
+
+        socket.on("getNotification", (res) => {
+            const isChatOpened = currentChat?.members.some(id => id === res.senderId);
+
+            if (isChatOpened) {
+                setNotifications(prev => [{...res, isRead:true}, ...prev])
+            }else{
+                setNotifications(prev => [res, ...prev])
+            }
+        })
+
+        return () => {
+            socket.off("getMessage");
+            socket.off("getNotification");
+        }
+       
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [socket, currentChat])
+    
 
     useEffect(()=>{
 
@@ -40,6 +110,7 @@ export const ChatContexProvider = ({children, user}) => {
             });
 
             setPotentialChats(pChats);
+            setAllUsers(response);
         }
 
         getUsers()
@@ -65,7 +136,7 @@ export const ChatContexProvider = ({children, user}) => {
         }
 
         getUserChats();
-    },[user])
+    },[user, notifications])
 
     useEffect(() => {
         const getMessages = async () => {
@@ -118,6 +189,57 @@ export const ChatContexProvider = ({children, user}) => {
         setTextMessage("")
     }, [])
 
+    const markAllNotificationsAsRead = useCallback((notifications)=>{
+        const mNotifications = notifications.map(n => {
+            return{...n, isRead: true}
+        })
+
+        setNotifications(mNotifications);
+    }, [])
+
+    const markNotificationAsRead = useCallback((n, userChats, user, notifications) => {
+        const desiredChat = userChats.find(chat => {
+            const chatMembers = [user._id, n.senderId];
+            const isDesiredChat = chat?.members.every(member => {
+                return chatMembers.includes(member);
+            });
+
+            return isDesiredChat;
+        });
+
+        const mNotifications = notifications.map(el => {
+            if (n.senderId === el.senderId) {
+                return {...n, isRead: true};
+            }else{
+                return el;
+            }
+        })
+        
+        updateCurrentChat(desiredChat);
+        setNotifications(mNotifications);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    const markThisUserNotificationsAsRead = useCallback((thisUserNotifications, notifications) => {
+        const mNotifications = notifications.map(el => {
+            let notification;
+
+            thisUserNotifications.forEach(n => {
+                if (n.senderId === el.senderId) {
+                    notification = {...n, isRead: true}
+                }else{
+                    notification = el
+                }
+            })
+
+            return notification
+        })
+
+        setNotifications(mNotifications)
+
+
+    }, [])
+
     return <ChatContex.Provider value={{
         userChats,
         isUserChatsLoading,
@@ -130,6 +252,13 @@ export const ChatContexProvider = ({children, user}) => {
         isMessagesError,
         isMessagesLoading,
         sendTextMessage,
+        onlineUsers,
+        sendTextMessageError,
+        notifications,
+        allUsers,
+        markAllNotificationsAsRead,
+        markNotificationAsRead,
+        markThisUserNotificationsAsRead
 
     }}>{children}</ChatContex.Provider>
 }

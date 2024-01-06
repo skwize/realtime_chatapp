@@ -91,7 +91,9 @@ body{
     background: #282828;
     padding: 0.75rem;
     border-radius: 5px;
-    max-width: 50%;
+    max-width: 65%;
+    text-wrap: wrap;
+    word-wrap: break-word;
   }
   
   .message.self {
@@ -143,6 +145,10 @@ body{
     background: #181d31;
     
     z-index: 5;
+  }
+  .notification-content{
+    max-height: 45vh;
+    overflow-y: auto;
   }
   
   .notifications-header {
